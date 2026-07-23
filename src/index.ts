@@ -2,23 +2,34 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, ConfigError } from "./config.js";
 import { buildServer } from "./server.js";
+import { QuotaGuard } from "./quota.js";
+import { startHttpServer } from "./http.js";
 
 export { buildServer } from "./server.js";
 export { loadConfig, ConfigError } from "./config.js";
-export type { McpConfig } from "./config.js";
+export { QuotaGuard, QuotaExceededError } from "./quota.js";
+export { startHttpServer } from "./http.js";
+export type { McpConfig, TransportKind } from "./config.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const server = buildServer(config);
+  const quota = new QuotaGuard(config.maxQuotaCalls);
+  const mode = config.allowWrites ? "writes ENABLED" : "read-only";
 
-  // stdout is the MCP transport — every human-readable line must go to stderr
-  // or it corrupts the protocol stream.
+  if (config.transport === "http") {
+    process.stderr.write(
+      `kaidn-mcp: starting (http, ${mode}, quota ceiling ${config.maxQuotaCalls})\n`,
+    );
+    await startHttpServer(config, quota);
+    return;
+  }
+
+  // stdout is the MCP transport in stdio mode — every human-readable line must
+  // go to stderr or it corrupts the protocol stream.
   process.stderr.write(
-    `kaidn-mcp: ready (${config.allowWrites ? "writes ENABLED" : "read-only"}, ` +
-      `quota ceiling ${config.maxQuotaCalls})\n`,
+    `kaidn-mcp: ready (stdio, ${mode}, quota ceiling ${config.maxQuotaCalls})\n`,
   );
-
-  await server.connect(new StdioServerTransport());
+  await buildServer(config, quota).connect(new StdioServerTransport());
 }
 
 // Only run when executed as a binary, so the module stays importable in tests.

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.kaidn/kaidn-mcp",
+  "description": "Investigate fraud against a Kaidn tenant in natural language — explain a verdict with its evidence, investigate an email, IP or device, and work the review queue. Read-only by default.",
+  "title": "Kaidn",
+  "websiteUrl": "https://kaidn.io",
+  "repository": {
+    "url": "https://github.com/Kaidn-io/kaidn-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@kaidn/mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "KAIDN_API_KEY",
+          "description": "Your secret Kaidn API key, from https://kaidn.io",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "KAIDN_API_URL",
+          "description": "Override the Kaidn API base URL",
+          "isRequired": false,
+          "default": "https://api.kaidn.io"
+        },
+        {
+          "name": "KAIDN_MCP_ALLOW_WRITES",
+          "description": "Set to 1 to register the mutating tools (add_to_list, label_outcome)",
+          "isRequired": false,
+          "default": ""
+        },
+        {
+          "name": "KAIDN_MCP_MAX_QUOTA_CALLS",
+          "description": "Ceiling on quota-consuming calls per process",
+          "isRequired": false,
+          "default": "100"
+        }
+      ]
+    }
+  ]
+}

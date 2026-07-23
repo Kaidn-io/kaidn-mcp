@@ -1,0 +1,46 @@
+runtime: container
+
+build:
+  dockerfile: Dockerfile
+  dockerBuildPath: .
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - kaidnApiKey
+    properties:
+      kaidnApiKey:
+        type: string
+        title: Kaidn API key
+        description: Your secret API key from https://kaidn.io
+      allowWrites:
+        type: boolean
+        title: Allow mutating tools
+        description: >-
+          Registers add_to_list and label_outcome, which change live decisions.
+          Leave off to stay read-only.
+        default: false
+      maxQuotaCalls:
+        type: integer
+        title: Quota ceiling
+        description: >-
+          Maximum quota-consuming calls per process. Guards against an agent
+          loop spending a month of quota in minutes.
+        default: 100
+      apiUrl:
+        type: string
+        title: API base URL
+        description: Override the Kaidn API endpoint.
+        default: https://api.kaidn.io
+  commandFunction: |-
+    (config) => ({
+      command: 'node',
+      args: ['dist/index.js', ...(config.allowWrites ? ['--allow-writes'] : [])],
+      env: {
+        KAIDN_API_KEY: config.kaidnApiKey,
+        KAIDN_API_URL: config.apiUrl ?? 'https://api.kaidn.io',
+        KAIDN_MCP_MAX_QUOTA_CALLS: String(config.maxQuotaCalls ?? 100)
+      }
+    })

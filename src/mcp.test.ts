@@ -38,6 +38,46 @@ describe("loadConfig", () => {
   });
 });
 
+describe("transport selection", () => {
+  it("defaults to stdio", () => {
+    expect(loadConfig([], KEY).transport).toBe("stdio");
+  });
+
+  it("switches to http by flag or env", () => {
+    expect(loadConfig(["--http"], KEY).transport).toBe("http");
+    expect(loadConfig([], { ...KEY, KAIDN_MCP_TRANSPORT: "http" }).transport).toBe("http");
+  });
+
+  it("binds loopback by default", () => {
+    const c = loadConfig(["--http"], KEY);
+    expect(c.host).toBe("127.0.0.1");
+    expect(c.port).toBe(8765);
+  });
+
+  it("accepts --port and --host in both spellings", () => {
+    expect(loadConfig(["--http", "--port", "9000"], KEY).port).toBe(9000);
+    expect(loadConfig(["--http", "--port=9001"], KEY).port).toBe(9001);
+  });
+
+  it("refuses to bind a public interface with no auth", () => {
+    // The process holds the tenant's API key; an open port spends their quota.
+    expect(() => loadConfig(["--http", "--host", "0.0.0.0"], KEY)).toThrow(ConfigError);
+  });
+
+  it("allows a public bind once a bearer token is set", () => {
+    const c = loadConfig(["--http", "--host", "0.0.0.0"], {
+      ...KEY,
+      KAIDN_MCP_HTTP_TOKEN: "s3cret",
+    });
+    expect(c.host).toBe("0.0.0.0");
+    expect(c.httpToken).toBe("s3cret");
+  });
+
+  it("does not gate stdio on the bind check", () => {
+    expect(() => loadConfig(["--host", "0.0.0.0"], KEY)).not.toThrow();
+  });
+});
+
 describe("QuotaGuard", () => {
   it("stops an agent loop at the ceiling", () => {
     const q = new QuotaGuard(3);

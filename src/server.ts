@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Kaidn } from "@kaidn/sdk";
 import { z } from "zod";
 import type { McpConfig } from "./config.js";
-import { QuotaGuard } from "./quota.js";
+import type { QuotaGuard } from "./quota.js";
 
 /** MCP tool results are content arrays; everything here returns text. */
 type ToolResult = {
@@ -31,12 +31,16 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 const VERDICTS = ["allow", "review", "block"] as const;
 const ENTITY_TYPES = ["ip", "email", "device", "user"] as const;
 
-export function buildServer(config: McpConfig): McpServer {
+/**
+ * Builds a server instance. The quota guard is passed in rather than created
+ * here: in HTTP mode a fresh server is built per request, and a per-request
+ * guard would reset the ceiling every time and enforce nothing.
+ */
+export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
   const kaidn = new Kaidn({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
   });
-  const quota = new QuotaGuard(config.maxQuotaCalls);
 
   const server = new McpServer({
     name: "kaidn",
