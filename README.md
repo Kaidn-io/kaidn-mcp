@@ -214,6 +214,110 @@ Two things govern every tool: whether it **spends quota**, and whether it
 
 ---
 
+## Worked examples
+
+The tools are designed to be chained. These are the flows they were built for.
+
+### Morning triage
+
+> **You:** What happened overnight, and what needs me?
+
+The model calls `get_stats` for the shape of the last 24 hours, then
+`triage_queue` for the events sitting on `review`, then `explain_event` on the
+worst one. You get a ranked list with the reasoning attached, rather than a
+dashboard you still have to read.
+
+### "Why was this customer blocked?"
+
+> **You:** Event `evt_8f21c` — a customer says they were wrongly blocked.
+
+`explain_event` returns every check that fired with its raw evidence — the
+datacenter ASN it matched, how many accounts shared the device, the velocity
+count. Enough to answer the customer, or to conclude the rule was wrong and
+needs tuning.
+
+### Working outward from one signal
+
+> **You:** Is `194.x.x.x` a one-off or part of a ring?
+
+`investigate_entity` returns enrichment and network reputation for the IP plus
+every recent event it appears in. If the same device ids keep recurring, that is
+a ring rather than a coincidence.
+
+### Checking a rule change before making it
+
+> **You:** If I dropped the velocity weight, what would stop being blocked?
+
+`get_config` reads the current weights; `list_events` with `verdict: "block"`
+shows what is currently caught. The model can tell you which of those hang on
+the check you are about to weaken.
+
+---
+
+## Error handling
+
+Failures come back as tool errors with a readable message, not exceptions — the
+model can act on them.
+
+| You see | Meaning | Fix |
+|---|---|---|
+| `KAIDN_API_KEY is not set` | Server started without a key | Set it in the client's `env` block |
+| `Kaidn error: 401 …` | Key rejected | Rotate or re-copy it from the dashboard |
+| `Kaidn error: 429 …` | Rate limited | Slow down; per-key throttling is by the minute |
+| `Session quota ceiling reached (100/100 …)` | The guard stopped an expensive run | Raise `KAIDN_MCP_MAX_QUOTA_CALLS` deliberately, or restart |
+| `No event <id> in the most recent 200 events` | Event is older than the scan window | Page back with `list_events` using `offset` |
+| `Supply exactly one of email, ip or device_id` | Ambiguous investigation | Ask about one entity at a time |
+| `Refusing to bind <host> without authentication` | Non-loopback HTTP with no token | Set `KAIDN_MCP_HTTP_TOKEN`, or bind `127.0.0.1` |
+
+Errors never contain your API key.
+
+---
+
+## Troubleshooting
+
+**The client shows no tools.**
+Check the client's MCP log for the startup line. `kaidn-mcp: ready (stdio, …)`
+on stderr means the server is up and the problem is on the client side. Nothing
+at all usually means `npx` could not resolve the package or Node is older than 18.
+
+**It starts, then exits immediately.**
+Almost always a missing `KAIDN_API_KEY`. The message says so on stderr; some
+clients hide stderr, so run it in a terminal to see it.
+
+**`add_to_list` and `label_outcome` are missing.**
+Working as designed. They need `--allow-writes`.
+
+**`set_config` and `forget_subject` are missing.**
+Also by design, and they are not available in any mode. See
+[SECURITY.md](SECURITY.md).
+
+**HTTP mode refuses to start.**
+You bound something other than loopback without a bearer token. That is the
+guard working — the process holds your API key.
+
+**Everything is slow.**
+The enrichment checks make live upstream calls. `get_stats`, `list_events`,
+`explain_event` and `triage_queue` are free and fast; prefer them when reading
+history.
+
+**Check the server independently of the client:**
+
+```bash
+node dist/index.js --help                 # no key required
+KAIDN_API_KEY=your_key npm start          # should print a ready line
+```
+
+---
+
+## Support
+
+- **Bugs and feature requests:** [GitHub issues](https://github.com/Kaidn-io/kaidn-mcp/issues)
+- **Security:** security@kaidn.io — see [SECURITY.md](SECURITY.md)
+- **Privacy and data handling:** [PRIVACY.md](PRIVACY.md)
+- **The API itself:** [kaidn.io](https://kaidn.io)
+
+---
+
 ## Run from source
 
 ```bash
@@ -249,6 +353,13 @@ difference between `explain_event` being useful and being decorative.
 **Rules decide. The model narrates.**
 
 ---
+
+## Project
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — what belongs here, and the guarantees a change must not break
+- [SECURITY.md](SECURITY.md) — reporting, threat model, known limitations
+- [PRIVACY.md](PRIVACY.md) — what passes through, what is stored, what is not
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## Licence
 
