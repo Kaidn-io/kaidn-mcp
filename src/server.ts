@@ -28,6 +28,9 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
   return fn().catch((err: unknown) => fail(`Kaidn error: ${describeError(err)}`));
 }
 
+/** Reported in the MCP handshake; kept in step with package.json on release. */
+export const SERVER_VERSION = "0.1.0";
+
 const VERDICTS = ["allow", "review", "block"] as const;
 const ENTITY_TYPES = ["ip", "email", "device", "user"] as const;
 
@@ -44,7 +47,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
 
   const server = new McpServer({
     name: "kaidn",
-    version: "0.1.0",
+    version: SERVER_VERSION,
   });
 
   // ── Tier 1: read-only primitives ──────────────────────────────────────────

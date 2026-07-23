@@ -1,80 +1,119 @@
-# @kaidn/mcp
+# Kaidn MCP
 
 **Model Context Protocol server for the [Kaidn](https://kaidn.io) fraud-scoring API.**
 
-Investigate fraud in plain English — *"why was this signup blocked?"*, *"what else
-has this device touched?"*, *"what's in the review queue this morning?"*
+Investigate fraud in plain English — *"why was this signup blocked?"*, *"what
+else has this device touched?"*, *"what's in the review queue this morning?"*
 
-MCP is an open protocol, so this works with **any MCP-compatible client** —
-Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue, VS Code, Zed,
-LibreChat, your own agent — over stdio locally, or **Streamable HTTP** for
-remote and hosted agents.
+- **Evidence, not just a score.** Every reason carries the raw numbers behind
+  it, so a model can explain a verdict rather than guess at it.
+- **Read-only by default.** Nothing changes your tenant unless you opt in.
+- **Quota-guarded.** An agent in a loop cannot spend your month in ten minutes.
+- **Any client.** MCP is an open protocol — stdio locally, Streamable HTTP for
+  remote and hosted agents.
 
-**Read-only by default.** Mutating tools are opt-in.
+### Requirements
 
----
-
-## Quick start
-
-```bash
-npx @kaidn/mcp
-```
-
-Get an API key from your [Kaidn dashboard](https://kaidn.io). It is read from
-the environment only — never a tool argument, never echoed in a response.
+Node.js 18 or newer, and an API key from your [Kaidn dashboard](https://kaidn.io).
 
 ---
 
-## Connect a client
+## Getting started
 
-Almost every MCP client takes the same three things: a **command**, its
-**args**, and an **env** block. If yours is not listed, use the generic form.
-
-### Generic (works anywhere)
-
-```json
-{
-  "command": "npx",
-  "args": ["-y", "@kaidn/mcp"],
-  "env": { "KAIDN_API_KEY": "your_key" }
-}
-```
-
-### Claude Code
-
-```bash
-claude mcp add kaidn --env KAIDN_API_KEY=your_key -- npx -y @kaidn/mcp
-```
-
-### Claude Desktop · Cursor · Windsurf · Cline · Continue
-
-Add to the client's MCP config file (`claude_desktop_config.json`,
-`.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, `cline_mcp_settings.json`
-respectively):
+First, install the Kaidn MCP server with your client. Standard config works in
+most of the tools:
 
 ```json
 {
   "mcpServers": {
     "kaidn": {
       "command": "npx",
-      "args": ["-y", "@kaidn/mcp"],
+      "args": ["@kaidn/mcp@latest"],
       "env": { "KAIDN_API_KEY": "your_key" }
     }
   }
 }
 ```
 
-### VS Code
+<details>
+<summary><b>Claude Code</b></summary>
 
 ```bash
-code --add-mcp '{"name":"kaidn","command":"npx","args":["-y","@kaidn/mcp"],"env":{"KAIDN_API_KEY":"your_key"}}'
+claude mcp add kaidn --env KAIDN_API_KEY=your_key -- npx @kaidn/mcp@latest
 ```
+</details>
 
-### Remote / hosted agents
+<details>
+<summary><b>Claude Desktop</b></summary>
 
-Anything that cannot spawn a local process — a hosted agent, a serverless
-function, another machine — connects over HTTP instead. See
-[Streamable HTTP](#streamable-http) below.
+Add the standard config to `claude_desktop_config.json`, then restart Claude.
+Settings → Developer → Edit Config opens the file.
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+Settings → MCP → Add new MCP Server, or add the standard config to
+`.cursor/mcp.json` in your project (or `~/.cursor/mcp.json` for every project).
+</details>
+
+<details>
+<summary><b>VS Code</b></summary>
+
+```bash
+code --add-mcp '{"name":"kaidn","command":"npx","args":["@kaidn/mcp@latest"],"env":{"KAIDN_API_KEY":"your_key"}}'
+```
+</details>
+
+<details>
+<summary><b>Windsurf</b></summary>
+
+Add the standard config to `~/.codeium/windsurf/mcp_config.json`.
+</details>
+
+<details>
+<summary><b>Cline</b></summary>
+
+Add the standard config to `cline_mcp_settings.json` via the MCP Servers icon →
+Configure MCP Servers.
+</details>
+
+<details>
+<summary><b>Zed</b></summary>
+
+Add to `settings.json` under `context_servers`, using the same command, args and
+env as the standard config.
+</details>
+
+<details>
+<summary><b>Anything else</b></summary>
+
+Any MCP client takes a **command**, **args** and an **env** block. Use the
+standard config above. If the client can only reach the server over the network
+rather than spawning a process, see [Streamable HTTP](#streamable-http).
+</details>
+
+---
+
+## Configuration
+
+| Option | Environment variable | Default | Purpose |
+|---|---|---|---|
+| | `KAIDN_API_KEY` | *required* | Your secret key. Environment only — never a flag, never a tool argument. |
+| | `KAIDN_API_URL` | `https://api.kaidn.io` | API base URL |
+| `--allow-writes` | `KAIDN_MCP_ALLOW_WRITES=1` | off | Register the mutating tools |
+| | `KAIDN_MCP_MAX_QUOTA_CALLS` | `100` | Quota ceiling per process |
+| `--http` | `KAIDN_MCP_TRANSPORT=http` | `stdio` | Serve Streamable HTTP |
+| `--host <addr>` | `KAIDN_MCP_HOST` | `127.0.0.1` | HTTP bind address |
+| `--port <n>` | `KAIDN_MCP_PORT` | `8765` | HTTP port |
+| | `KAIDN_MCP_HTTP_TOKEN` | unset | Require `Authorization: Bearer` on HTTP |
+| `--help` | | | Show usage |
+| `--version` | | | Show the version |
+
+**Precedence:** CLI flags override environment variables.
+
+The API key is deliberately env-only. A key passed as a flag leaks into process
+listings and shell history.
 
 ---
 
@@ -85,30 +124,18 @@ function, another machine — connects over HTTP instead. See
 | **stdio** *(default)* | local clients that spawn a subprocess | — |
 | **Streamable HTTP** | remote agents, containers, anything off-machine | `POST /mcp` |
 
-`HTTP+SSE` is deliberately not implemented: it was deprecated in the 2025-03-26
-spec and sunset in June 2026. Streamable HTTP is the current standard.
+`HTTP+SSE` is deliberately absent: deprecated in the 2025-03-26 spec and sunset
+in June 2026.
 
 ### Streamable HTTP
 
 ```bash
-npx @kaidn/mcp --http --port 8765
+npx @kaidn/mcp@latest --http --port 8765
 ```
 
-Runs **stateless** — a fresh server per request, nothing shared between callers —
-so it sits behind a load balancer without surprises. There is also an
-unauthenticated `GET /health` for container orchestrators.
-
-**It binds `127.0.0.1` by default, and refuses to bind anything wider without a
-token.** This process holds your API key, so an open port lets a stranger spend
-your quota:
-
-```bash
-# fails fast, on purpose
-npx @kaidn/mcp --http --host 0.0.0.0
-
-# fine — requires Authorization: Bearer <token>
-KAIDN_MCP_HTTP_TOKEN=your_token npx @kaidn/mcp --http --host 0.0.0.0
-```
+Stateless — a fresh server per request, nothing shared between callers — so it
+sits behind a load balancer without surprises. `GET /health` is unauthenticated
+so an orchestrator can check liveness without holding the token.
 
 ---
 
@@ -116,7 +143,9 @@ KAIDN_MCP_HTTP_TOKEN=your_token npx @kaidn/mcp --http --host 0.0.0.0
 
 ```bash
 docker build -t kaidn-mcp .
+```
 
+```bash
 # stdio — behaves like the npx invocation
 docker run -i --rm -e KAIDN_API_KEY=your_key kaidn-mcp
 
@@ -130,6 +159,27 @@ docker run --rm -p 8765:8765 \
 ```
 
 Multi-stage build, runs as the unprivileged `node` user, with a healthcheck.
+
+---
+
+## Security
+
+**The server holds your API key.** Whoever can reach it can spend your quota, so
+the defaults are conservative and the guards fail closed rather than warning.
+
+- **Binds `127.0.0.1`, and refuses to start on a wider interface** unless
+  `KAIDN_MCP_HTTP_TOKEN` is set. It stops with an explanation rather than
+  quietly exposing your account.
+- **Read-only by default.** `add_to_list` and `label_outcome` exist only with
+  `--allow-writes`.
+- **`set_config` and `forget_subject` are never exposed**, in any mode. One
+  silently changes the verdict on every future event; the other is irreversible
+  GDPR erasure. Both belong in the dashboard, in front of a human.
+- **Quota ceiling per process**, with remaining budget reported on every costing
+  response. A reservation that would overshoot is refused outright rather than
+  partially spent.
+- **The key never crosses the tool boundary** — not as a parameter, not in
+  output, not in an error.
 
 ---
 
@@ -162,50 +212,6 @@ Two things govern every tool: whether it **spends quota**, and whether it
 | `add_to_list` | Add an entity to the allow or block list |
 | `label_outcome` | Report a confirmed fraud / chargeback / legit outcome |
 
-```bash
-npx @kaidn/mcp --allow-writes
-```
-
-### Two tools deliberately not exposed
-
-`set_config` would let an agent change scoring weights and thresholds, silently
-altering the verdict on **every future event** rather than the one being looked
-at. `forget_subject` is irreversible GDPR erasure.
-
-Both belong in the dashboard, in front of a human. They are absent whether or
-not `--allow-writes` is set.
-
----
-
-## Quota protection
-
-Scoring and enrichment each spend a row of your monthly quota, and an agent in a
-loop can spend a great many unattended. The server enforces a ceiling per
-process and reports remaining budget on every costing response, so the model can
-pace itself. A reservation that would overshoot is refused outright rather than
-partially spent. Free tools never count.
-
-```bash
-KAIDN_MCP_MAX_QUOTA_CALLS=500 npx @kaidn/mcp
-```
-
----
-
-## Configuration
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `KAIDN_API_KEY` | *required* | Your secret API key |
-| `KAIDN_API_URL` | `https://api.kaidn.io` | Override the API base URL |
-| `KAIDN_MCP_ALLOW_WRITES` | unset | `1` is equivalent to `--allow-writes` |
-| `KAIDN_MCP_MAX_QUOTA_CALLS` | `100` | Quota ceiling per process |
-| `KAIDN_MCP_TRANSPORT` | `stdio` | `http` is equivalent to `--http` |
-| `KAIDN_MCP_HOST` | `127.0.0.1` | HTTP bind address |
-| `KAIDN_MCP_PORT` | `8765` | HTTP port |
-| `KAIDN_MCP_HTTP_TOKEN` | unset | Require `Authorization: Bearer` on HTTP |
-
-Flags: `--allow-writes`, `--http`, `--host <addr>`, `--port <n>`.
-
 ---
 
 ## Run from source
@@ -217,8 +223,6 @@ npm install
 npm run build
 npm test
 ```
-
-Point a client at the built entrypoint with an absolute path:
 
 ```bash
 claude mcp add kaidn --env KAIDN_API_KEY=your_key -- node /absolute/path/to/kaidn-mcp/dist/index.js
