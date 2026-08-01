@@ -1,6 +1,7 @@
 {
   "name": "@kaidn/mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "mcpName": "io.kaidn/kaidn-mcp",
   "description": "Model Context Protocol server for the Kaidn fraud-scoring API \u2014 lets Claude, Cursor and other AI agents investigate fraud in plain English. Read-only by default.",
   "type": "module",
   "repository": {
