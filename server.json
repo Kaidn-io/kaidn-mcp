@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.kaidn/kaidn-mcp",
-  "description": "Investigate fraud against a Kaidn tenant in natural language — explain a verdict with its evidence, investigate an email, IP or device, and work the review queue. Read-only by default.",
+  "description": "Investigate fraud against a Kaidn tenant in natural language \u2014 explain a verdict with its evidence, investigate an email, IP or device, and work the review queue. Read-only by default.",
   "title": "Kaidn",
   "websiteUrl": "https://kaidn.io",
   "repository": {
     "url": "https://github.com/Kaidn-io/kaidn-mcp",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@kaidn/mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
