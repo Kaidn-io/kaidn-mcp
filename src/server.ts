@@ -214,12 +214,15 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
   server.registerTool(
     "investigate_entity",
     {
-      title: "Investigate an email, IP or device",
+      title: "Investigate an entity and the ring around it",
       description:
-        "One call for what a fraud analyst actually wants: enrichment and network " +
-        "reputation for the entity, plus the recent events it appears in. Supply " +
-        "exactly one of email, ip or device_id. Enrichment consumes one row of " +
-        "monthly quota (device_id lookups are free).",
+        "One call for what a fraud analyst actually wants. Returns enrichment for the " +
+        "entity, its reputation across the CROSS-OPERATOR abuse network (whether this " +
+        "email, IP or device has already burned other businesses, not just yours), and " +
+        "every recent event it appears in — which is how you get from one suspicious " +
+        "signup to the whole ring of accounts sharing its device, IP or inbox. Supply " +
+        "exactly one of email, ip or device_id. Enrichment consumes one row of monthly " +
+        "quota (device_id lookups are free).",
       inputSchema: {
         email: z.string().optional(),
         ip: z.string().optional(),

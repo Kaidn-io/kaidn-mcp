@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.kaidn/kaidn-mcp",
-  "description": "Investigate fraud in plain English \u2014 explain verdicts with evidence, check email, IP and phone.",
+  "description": "Explain fraud verdicts with evidence, surface account rings, and see who has burned other operators.",
   "title": "Kaidn",
   "websiteUrl": "https://kaidn.io",
   "repository": {
     "url": "https://github.com/Kaidn-io/kaidn-mcp",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@kaidn/mcp",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "transport": {
         "type": "stdio"
       },
