@@ -59,7 +59,13 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
       description:
         "Enrichment and in-network reputation for one email address: disposable/ " +
         "throwaway domain, deliverability, fraud score, plus how often the address " +
-        "has been seen abusing other operators. Consumes one row of monthly quota.",
+        "has been seen abusing other operators. " +
+        "Also returns `canonical`, the identity key: every alias that reaches one " +
+        "mailbox (+tags, gmail dot tricks, googlemail.com) collapses to the same " +
+        "string, so compare THAT across accounts to tell whether two signups are " +
+        "one person. `is_aliased` and `alias_tricks` say which trick was used, and " +
+        "`reject_reason` says why an address is unusable. " +
+        "Consumes one row of monthly quota.",
       inputSchema: { email: z.string().describe("The email address to check") },
     },
     async ({ email }) =>
@@ -303,7 +309,11 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
       title: "Score an event",
       description:
         "Run an event through the scoring engine and get {score, verdict, reasons, " +
-        "checks}. Consumes one row of monthly quota AND records an event — prefer " +
+        "checks}. When the event carries an email, the response also has an " +
+        "`identity` block whose `email_canonical` is the dedupe key for that " +
+        "address — so one call both scores the event and tells you whether the " +
+        "mailbox is one you have already seen. " +
+        "Consumes one row of monthly quota AND records an event — prefer " +
         "the read-only tools when investigating history rather than testing new input.",
       inputSchema: {
         event: z
