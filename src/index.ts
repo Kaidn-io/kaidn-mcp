@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, ConfigError } from "./config.js";
 import { buildServer } from "./server.js";
@@ -73,9 +75,23 @@ async function main(): Promise<void> {
 }
 
 // Only run when executed as a binary, so the module stays importable in tests.
-const invokedDirectly =
-  process.argv[1] !== undefined &&
-  import.meta.url === new URL(`file://${process.argv[1]}`).href;
+// argv[1] is whatever path the launcher used, which for `npx` is a .bin symlink
+// pointing here; import.meta.url is always the resolved real file. Compare the
+// two through realpath so the symlinked launch still counts as direct.
+function isInvokedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  const resolve = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  return resolve(fileURLToPath(import.meta.url)) === resolve(entry);
+}
+
+const invokedDirectly = isInvokedDirectly();
 
 if (invokedDirectly) {
   main().catch((err: unknown) => {
