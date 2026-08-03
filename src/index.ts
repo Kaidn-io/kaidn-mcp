@@ -56,7 +56,9 @@ async function main(): Promise<void> {
 
   const config = loadConfig();
   const quota = new QuotaGuard(config.maxQuotaCalls);
-  const mode = config.allowWrites ? "writes ENABLED" : "read-only";
+  // Not "read-only": score_event is in the default tier and records an event.
+  // The flag gates the list/label mutations, not every write.
+  const mode = config.allowWrites ? "writes ENABLED" : "no list/label mutations";
 
   if (config.transport === "http") {
     process.stderr.write(

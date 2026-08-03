@@ -29,10 +29,24 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 }
 
 /** Reported in the MCP handshake; kept in step with package.json on release. */
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.4";
 
 const VERDICTS = ["allow", "review", "block"] as const;
 const ENTITY_TYPES = ["ip", "email", "device", "user"] as const;
+
+/** Page size and ceiling for the paged event scan behind explain_event. */
+const EVENT_PAGE_SIZE = 200;
+const EXPLAIN_MAX_PAGES = 25;
+
+/**
+ * Events carry a peppered HMAC of the address as `emailHash`. It is not in the
+ * SDK's EventRecord type but the API returns it, and it is the only exact join
+ * key for "same inbox" — the plaintext address is deliberately unrecoverable.
+ */
+function emailHashOf(event: unknown): string | undefined {
+  const h = (event as { emailHash?: unknown }).emailHash;
+  return typeof h === "string" ? h : undefined;
+}
 
 /**
  * Builds a server instance. The quota guard is passed in rather than created
@@ -197,14 +211,27 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     },
     async ({ event_id }) =>
       guard(async () => {
-        // The events feed is the source of truth; scan recent pages for the id
+        // The events feed is the source of truth; page back through it for the id
         // rather than re-scoring, which would cost quota and create a new event.
-        const { events } = await kaidn.events({ limit: 200 });
-        const hit = events.find((e) => e.id === event_id);
+        // A single page is not enough: any tenant with more events than one page
+        // would have its older history become permanently unexplainable.
+        let hit: Awaited<ReturnType<typeof kaidn.events>>["events"][number] | undefined;
+        let scanned = 0;
+        for (let page = 0; page < EXPLAIN_MAX_PAGES; page++) {
+          const { events } = await kaidn.events({
+            limit: EVENT_PAGE_SIZE,
+            offset: page * EVENT_PAGE_SIZE,
+          });
+          if (events.length === 0) break;
+          scanned += events.length;
+          hit = events.find((e) => e.id === event_id);
+          if (hit || events.length < EVENT_PAGE_SIZE) break;
+        }
         if (!hit) {
           return fail(
-            `No event ${event_id} in the most recent 200 events. It may be older — ` +
-              `page back with list_events(offset) to locate it.`,
+            `No event ${event_id} found in the ${scanned} most recent events. Check the ` +
+              `id, or if this tenant has more than ${EXPLAIN_MAX_PAGES * EVENT_PAGE_SIZE} ` +
+              `events the record may be older than the search window.`,
           );
         }
         return ok(json(hit));
@@ -221,28 +248,40 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
         "email, IP or device has already burned other businesses, not just yours), and " +
         "every recent event it appears in — which is how you get from one suspicious " +
         "signup to the whole ring of accounts sharing its device, IP or inbox. Supply " +
-        "exactly one of email, ip or device_id. Enrichment consumes one row of monthly " +
-        "quota (device_id lookups are free).",
+        "exactly one of email, email_hash, ip or device_id. To pivot on the inbox of an " +
+        "event you are already looking at, pass its `emailHash` as email_hash: that is " +
+        "an exact match on the same mailbox and is free. Passing a plaintext `email` " +
+        "can only match on its DOMAIN, so on a consumer domain like gmail.com it returns " +
+        "unrelated accounts and is not a ring — check `match_basis` in the response " +
+        "before calling anything a ring. Enrichment consumes one row of monthly quota " +
+        "(device_id and email_hash lookups are free).",
       inputSchema: {
         email: z.string().optional(),
+        email_hash: z
+          .string()
+          .optional()
+          .describe("An event's `emailHash` — exact same-inbox match, free"),
         ip: z.string().optional(),
         device_id: z.string().optional(),
         limit: z
           .number()
           .int()
           .min(1)
-          .max(200)
+          .max(EVENT_PAGE_SIZE * EXPLAIN_MAX_PAGES)
           .optional()
-          .describe("How many recent events to scan. Default 100"),
+          .describe(
+            "How many recent events to scan, paged behind the scenes. Default 500 — " +
+              "raise it if a ring member may be older than that",
+          ),
       },
     },
-    async ({ email, ip, device_id, limit }) =>
+    async ({ email, email_hash, ip, device_id, limit }) =>
       guard(async () => {
-        const given = [email, ip, device_id].filter(Boolean);
+        const given = [email, email_hash, ip, device_id].filter(Boolean);
         if (given.length !== 1) {
           return fail(
-            "Supply exactly one of email, ip or device_id — investigating more than " +
-              "one entity at a time hides which one carries the risk.",
+            "Supply exactly one of email, email_hash, ip or device_id — investigating " +
+              "more than one entity at a time hides which one carries the risk.",
           );
         }
 
@@ -255,29 +294,61 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
           enrichment = await kaidn.check.ip(ip);
         }
 
-        const { events } = await kaidn.events({ limit: limit ?? 100 });
+        // Page the scan. A single 200-event request silently hid real rings:
+        // two accounts sharing a mailbox sat 229 events back and were invisible.
+        const scanDepth = limit ?? 500;
+        const events: Awaited<ReturnType<typeof kaidn.events>>["events"] = [];
+        while (events.length < scanDepth) {
+          const { events: page } = await kaidn.events({
+            limit: Math.min(EVENT_PAGE_SIZE, scanDepth - events.length),
+            offset: events.length,
+          });
+          if (page.length === 0) break;
+          events.push(...page);
+          if (page.length < EVENT_PAGE_SIZE) break;
+        }
+
         const related = events.filter((e) =>
           device_id
             ? e.deviceId === device_id
             : ip
               ? e.ip === ip
-              : typeof email === "string" &&
-                typeof e.emailDomain === "string" &&
-                email.toLowerCase().endsWith(`@${e.emailDomain.toLowerCase()}`),
+              : email_hash
+                ? emailHashOf(e) === email_hash
+                : typeof email === "string" &&
+                  typeof e.emailDomain === "string" &&
+                  email.toLowerCase().endsWith(`@${e.emailDomain.toLowerCase()}`),
         );
+
+        // An email pivot can only match on domain, so it is NOT a ring. Say so in
+        // the payload rather than letting the caller read it as one.
+        const matchBasis = device_id
+          ? "device_id (exact)"
+          : ip
+            ? "ip (exact)"
+            : email_hash
+              ? "email_hash (exact — same mailbox)"
+              : "email_domain (WEAK — not a ring)";
 
         const body = json({
           entity: device_id
             ? { device_id }
             : ip
               ? { ip }
-              : { email },
+              : email_hash
+                ? { email_hash }
+                : { email },
+          match_basis: matchBasis,
+          events_scanned: events.length,
           enrichment,
           related_event_count: related.length,
           related_events: related,
           note: email
-            ? "Events store the email domain, not the full address, so related_events " +
-              "matches on domain and may include other addresses at that domain."
+            ? "Events store a peppered hash of the address, never the address itself, " +
+              "so a plaintext email can only be matched on its DOMAIN. These accounts " +
+              "share a mail provider and nothing more — on a consumer domain that is " +
+              "meaningless. To pivot on the actual inbox, take the `emailHash` off one " +
+              "of these events and pass it as email_hash."
             : undefined,
         });
         return ok(enrichment ? body + quota.footer() : body);
