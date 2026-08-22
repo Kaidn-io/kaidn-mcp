@@ -1,3 +1,19 @@
+<!-- kaidn-header -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Kaidn-io/kaidn-mcp/main/.github/kaidn-banner-dark.png">
+    <img src="https://raw.githubusercontent.com/Kaidn-io/kaidn-mcp/main/.github/kaidn-banner-light.png" alt="Kaidn" width="520">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@kaidn/mcp"><img src="https://img.shields.io/npm/v/@kaidn/mcp?logo=npm&logoColor=white" alt="npm version"></a>
+  <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.kaidn/kaidn-mcp"><img src="https://img.shields.io/badge/MCP%20registry-io.kaidn%2Fkaidn--mcp-6f42c1" alt="MCP registry"></a>
+  <a href="https://github.com/Kaidn-io/kaidn-mcp/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@kaidn/mcp?color=blue" alt="license MIT"></a>
+  <a href="https://kaidn.io/docs"><img src="https://img.shields.io/badge/docs-kaidn.io-FF4D00" alt="docs"></a>
+</p>
+<!-- /kaidn-header -->
+
 # Kaidn MCP
 
 **Model Context Protocol server for the [Kaidn](https://kaidn.io) fraud-scoring API.**
