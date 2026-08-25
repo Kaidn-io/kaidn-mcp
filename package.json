@@ -1,6 +1,6 @@
 {
   "name": "@kaidn/mcp",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "mcpName": "io.kaidn/kaidn-mcp",
   "description": "Investigate fraud from Claude, Cursor or any MCP client. Explain any verdict with the evidence behind it, pivot from one signup to every account sharing its device, IP or inbox, check an entity against a cross-operator abuse network, and work the review queue. Read-only by default.",
   "type": "module",

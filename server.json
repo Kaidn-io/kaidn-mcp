@@ -8,12 +8,12 @@
     "url": "https://github.com/Kaidn-io/kaidn-mcp",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "0.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@kaidn/mcp",
-      "version": "1.0.0",
+      "version": "0.3.0",
       "transport": {
         "type": "stdio"
       },

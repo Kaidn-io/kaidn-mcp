@@ -29,7 +29,7 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 }
 
 /** Reported in the MCP handshake; kept in step with package.json on release. */
-export const SERVER_VERSION = "1.0.0";
+export const SERVER_VERSION = "0.3.0";
 
 /**
  * Tool annotations. Every tool declares all four hints explicitly rather than
