@@ -34,12 +34,12 @@ function stubApi(events: unknown[]): () => void {
   };
 }
 
-async function connect(events: unknown[]) {
+async function connect(events: unknown[], allowWrites = false) {
   const restore = stubApi(events);
   const server = buildServer(
     {
       apiKey: "k_test",
-      allowWrites: false,
+      allowWrites,
       maxQuotaCalls: 100,
       transport: "stdio",
       host: "127.0.0.1",
@@ -177,6 +177,118 @@ describe("investigate_entity", () => {
     });
     expect(isError).toBe(true);
   });
+});
+
+/**
+ * The full tool catalogue with the hints each one must declare. Kept as data so
+ * a new tool that ships without annotations fails here rather than in a
+ * directory review: hosts can only warn a user about a call they can classify,
+ * and a missing or non-boolean hint is grounds for rejection.
+ */
+const TOOL_HINTS = {
+  check_email: { readOnly: true, destructive: false, idempotent: true },
+  check_ip: { readOnly: true, destructive: false, idempotent: true },
+  check_phone: { readOnly: true, destructive: false, idempotent: true },
+  list_events: { readOnly: true, destructive: false, idempotent: true },
+  get_stats: { readOnly: true, destructive: false, idempotent: true },
+  get_config: { readOnly: true, destructive: false, idempotent: true },
+  explain_event: { readOnly: true, destructive: false, idempotent: true },
+  investigate_entity: { readOnly: true, destructive: false, idempotent: true },
+  triage_queue: { readOnly: true, destructive: false, idempotent: true },
+  score_event: { readOnly: false, destructive: false, idempotent: false },
+  add_to_list: { readOnly: false, destructive: false, idempotent: true },
+  label_outcome: { readOnly: false, destructive: false, idempotent: false },
+} as const;
+
+/** The two mutations only exist when the server is started with --allow-writes. */
+const WRITE_GATED = ["add_to_list", "label_outcome"] as const;
+
+type Listed = {
+  name: string;
+  annotations?: {
+    readOnlyHint?: unknown;
+    destructiveHint?: unknown;
+    idempotentHint?: unknown;
+    openWorldHint?: unknown;
+  };
+};
+
+const listed = async (allowWrites: boolean) => {
+  const { client, restore } = await connect([], allowWrites);
+  cleanup = restore;
+  const { tools } = (await client.listTools()) as { tools: Listed[] };
+  return { client, tools };
+};
+
+describe("tool annotations", () => {
+  it("registers exactly the documented catalogue", async () => {
+    const { tools } = await listed(true);
+    expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(TOOL_HINTS).sort());
+  });
+
+  it("keeps the mutations out of the default read-only server", async () => {
+    const { tools } = await listed(false);
+    const names = tools.map((t) => t.name);
+    for (const gated of WRITE_GATED) expect(names).not.toContain(gated);
+    expect(names).toHaveLength(Object.keys(TOOL_HINTS).length - WRITE_GATED.length);
+  });
+
+  it("declares all four hints, as booleans, on every tool", async () => {
+    const { tools } = await listed(true);
+    for (const tool of tools) {
+      const a = tool.annotations ?? {};
+      for (const hint of [
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+      ] as const) {
+        expect(typeof a[hint], `${tool.name}.${hint}`).toBe("boolean");
+      }
+    }
+  });
+
+  it("gives each tool the hints its handler actually earns", async () => {
+    const { tools } = await listed(true);
+    for (const tool of tools) {
+      const want = TOOL_HINTS[tool.name as keyof typeof TOOL_HINTS];
+      const a = tool.annotations ?? {};
+      expect(a.readOnlyHint, `${tool.name}.readOnlyHint`).toBe(want.readOnly);
+      expect(a.destructiveHint, `${tool.name}.destructiveHint`).toBe(want.destructive);
+      expect(a.idempotentHint, `${tool.name}.idempotentHint`).toBe(want.idempotent);
+      // Every handler calls the Kaidn API, so none of them is a closed world.
+      expect(a.openWorldHint, `${tool.name}.openWorldHint`).toBe(true);
+    }
+  });
+});
+
+describe("tool smoke", () => {
+  // One call per tool, so every name in the catalogue is exercised and not just
+  // declared. The stubbed API answers 200 with an empty body, which is enough to
+  // prove the handler wires arguments through and does not throw.
+  const ARGS: Record<keyof typeof TOOL_HINTS, Record<string, unknown>> = {
+    check_email: { email: "someone@mailinator.com" },
+    check_ip: { ip: "185.220.101.1" },
+    check_phone: { phone: "+14155551234", country: "US" },
+    list_events: { limit: 5 },
+    get_stats: { window_hours: 24 },
+    get_config: {},
+    explain_event: { event_id: "evt-1" },
+    investigate_entity: { email_hash: "HASH_A" },
+    triage_queue: { limit: 5 },
+    score_event: { event: "signup", email: "someone@mailinator.com" },
+    add_to_list: { list: "block", type: "ip", value: "185.220.101.1" },
+    label_outcome: { label: "fraud", event_id: "evt-1" },
+  };
+
+  for (const name of Object.keys(ARGS) as (keyof typeof ARGS)[]) {
+    it(`answers a ${name} call`, async () => {
+      const { client, restore } = await connect([event(1)], true);
+      cleanup = restore;
+      const { isError } = await call(client, name, ARGS[name]);
+      expect(isError).toBe(false);
+    });
+  }
 });
 
 describe("packaging", () => {

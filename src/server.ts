@@ -29,7 +29,55 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 }
 
 /** Reported in the MCP handshake; kept in step with package.json on release. */
-export const SERVER_VERSION = "0.2.4";
+export const SERVER_VERSION = "1.0.0";
+
+/**
+ * Tool annotations. Every tool declares all four hints explicitly rather than
+ * leaning on the SDK defaults: a host can only warn a user about a call it can
+ * classify, and directory reviews reject a server where any hint is missing or
+ * non-boolean.
+ *
+ * `openWorldHint` is true on all of them because every handler talks to the
+ * Kaidn API over the network, so the answer depends on state this process does
+ * not own.
+ */
+const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  // Idempotence is only meaningful for a tool that writes; declared anyway so
+  // the annotation set is complete. The check_* tools do spend a row of monthly
+  // quota per call, which is billing, not a change to any fraud state.
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
+/** Scores AND records an event, so a second identical call is not a no-op. */
+const RECORDS_EVENT = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+} as const;
+
+/**
+ * Additive list write: adding the same entry twice leaves the tenant in the
+ * same state, and an entry can be removed again from the dashboard, so this
+ * is a non-destructive update even though it changes live verdicts at once.
+ */
+const ADDITIVE_WRITE = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
+/** Each label appends another outcome record, so twice differs from once. */
+const APPENDS_LABEL = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+} as const;
 
 const VERDICTS = ["allow", "review", "block"] as const;
 const ENTITY_TYPES = ["ip", "email", "device", "user"] as const;
@@ -70,6 +118,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "check_email",
     {
       title: "Check an email address",
+      annotations: READ_ONLY,
       description:
         "Enrichment and in-network reputation for one email address: disposable/ " +
         "throwaway domain, deliverability, fraud score, plus how often the address " +
@@ -94,6 +143,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "check_ip",
     {
       title: "Check an IP address",
+      annotations: READ_ONLY,
       description:
         "Enrichment and in-network reputation for one IP: proxy/VPN/Tor, datacenter " +
         "ASN, geo, fraud score, and cross-operator abuse history. Consumes one row " +
@@ -112,6 +162,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "check_phone",
     {
       title: "Check a phone number",
+      annotations: READ_ONLY,
       description:
         "Validity, line type, carrier and fraud score for one phone number. " +
         "Consumes one row of monthly quota.",
@@ -135,6 +186,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "list_events",
     {
       title: "List scored events",
+      annotations: READ_ONLY,
       description:
         "Scored events for this tenant, newest first. Free — does not consume quota. " +
         "Filter by verdict or event type to narrow an investigation.",
@@ -164,6 +216,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "get_stats",
     {
       title: "Verdict and reason rollups",
+      annotations: READ_ONLY,
       description:
         "Aggregate view over a rolling window: totals by verdict, average score and " +
         "the most common reasons. Free — does not consume quota. Start here to see " +
@@ -183,6 +236,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "get_config",
     {
       title: "Get scoring configuration",
+      annotations: READ_ONLY,
       description:
         "This tenant's weight and threshold overrides plus the effective merged " +
         "engine config. Free. Useful for explaining why a score landed where it did.",
@@ -201,6 +255,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "explain_event",
     {
       title: "Explain why an event scored the way it did",
+      annotations: READ_ONLY,
       description:
         "The 'why was this blocked?' tool. Returns the event with every check that " +
         "fired, its weight, and the raw evidence behind it, so the reasoning can be " +
@@ -242,6 +297,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "investigate_entity",
     {
       title: "Investigate an entity and the ring around it",
+      annotations: READ_ONLY,
       description:
         "One call for what a fraud analyst actually wants. Returns enrichment for the " +
         "entity, its reputation across the CROSS-OPERATOR abuse network (whether this " +
@@ -359,6 +415,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "triage_queue",
     {
       title: "Review queue, highest risk first",
+      annotations: READ_ONLY,
       description:
         "Every event sitting on the 'review' verdict, sorted by score descending — " +
         "the daily triage job. Free.",
@@ -381,6 +438,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
     "score_event",
     {
       title: "Score an event",
+      annotations: RECORDS_EVENT,
       description:
         "Run an event through the scoring engine and get {score, verdict, reasons, " +
         "checks}. When the event carries an email, the response also has an " +
@@ -421,6 +479,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
       "add_to_list",
       {
         title: "Add an entry to the allow or block list",
+        annotations: ADDITIVE_WRITE,
         description:
           "Add one entity to this tenant's allow or block list. Blocklist entries " +
           "short-circuit scoring, so this changes live decisions immediately.",
@@ -441,6 +500,7 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
       "label_outcome",
       {
         title: "Label a confirmed outcome",
+        annotations: APPENDS_LABEL,
         description:
           "Report what actually happened — fraud, chargeback or legit — to sharpen " +
           "the scoring engine and the cross-operator graph. Reference an event_id " +
