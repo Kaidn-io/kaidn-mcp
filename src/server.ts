@@ -29,7 +29,7 @@ function guard(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 }
 
 /** Reported in the MCP handshake; kept in step with package.json on release. */
-export const SERVER_VERSION = "0.3.0";
+export const SERVER_VERSION = "0.4.0";
 
 /**
  * Tool annotations. Every tool declares all four hints explicitly rather than
@@ -189,7 +189,9 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
       annotations: READ_ONLY,
       description:
         "Scored events for this tenant, newest first. Free — does not consume quota. " +
-        "Filter by verdict or event type to narrow an investigation.",
+        "Filter by verdict or event type, or search by device fingerprint or user id " +
+        "with `q`, to narrow an investigation. `q` is matched by the store across the " +
+        "whole history, so it finds records far older than one page.",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe("Default 25"),
         offset: z.number().int().min(0).optional(),
@@ -198,15 +200,26 @@ export function buildServer(config: McpConfig, quota: QuotaGuard): McpServer {
           .string()
           .optional()
           .describe("Event type, e.g. 'signup', 'cashout', 'trial_start'"),
+        q: z
+          .string()
+          .min(1)
+          .max(256)
+          .optional()
+          .describe(
+            "Substring, matched case-insensitively against the device fingerprint " +
+              "and the user id. Use it to pull every event for one device or account. " +
+              "For a full ring pivot across device, IP and inbox, use investigate_entity.",
+          ),
       },
     },
-    async ({ limit, offset, verdict, event }) =>
+    async ({ limit, offset, verdict, event, q }) =>
       guard(async () => {
         const r = await kaidn.events({
           limit: limit ?? 25,
           ...(offset !== undefined ? { offset } : {}),
           ...(verdict ? { verdict } : {}),
           ...(event ? { event } : {}),
+          ...(q ? { q } : {}),
         });
         return ok(json(r.events));
       }),

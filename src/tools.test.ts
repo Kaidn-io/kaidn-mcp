@@ -10,7 +10,9 @@ import { QuotaGuard } from "./quota.js";
 
 /**
  * Stands in for the Kaidn API. `pages` is the full event feed; the stub honours
- * limit/offset so paging behaviour is exercised for real rather than assumed.
+ * limit/offset so paging behaviour is exercised for real rather than assumed,
+ * and `q` the way the store does, so a search is tested rather than assumed
+ * to have been forwarded.
  */
 function stubApi(events: unknown[]): () => void {
   const real = globalThis.fetch;
@@ -19,8 +21,14 @@ function stubApi(events: unknown[]): () => void {
     if (url.pathname === "/v1/events") {
       const limit = Number(url.searchParams.get("limit") ?? 200);
       const offset = Number(url.searchParams.get("offset") ?? 0);
+      const q = url.searchParams.get("q")?.toLowerCase();
+      const matching = q
+        ? (events as { userId?: string; deviceId?: string }[]).filter((e) =>
+            [e.deviceId, e.userId].some((v) => v?.toLowerCase().includes(q)),
+          )
+        : events;
       return new Response(
-        JSON.stringify({ events: events.slice(offset, offset + limit) }),
+        JSON.stringify({ events: matching.slice(offset, offset + limit) }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
@@ -102,6 +110,41 @@ describe("explain_event", () => {
     const { text, isError } = await call(client, "explain_event", { event_id: "nope" });
     expect(isError).toBe(true);
     expect(text).toContain("nope");
+  });
+});
+
+describe("list_events", () => {
+  // The search is the store's, not the client's: it must reach the API as `q`
+  // rather than be applied to whatever one page happened to return.
+  const feed = [
+    event(1, { deviceId: "fp_aaa111", userId: "alice" }),
+    event(2, { deviceId: "fp_bbb222", userId: "bob" }),
+    event(3, { deviceId: "fp_aaa111", userId: "carol" }),
+  ];
+
+  it("forwards q to the API and returns only the matches", async () => {
+    const { client, restore } = await connect(feed);
+    cleanup = restore;
+
+    const { text, isError } = await call(client, "list_events", { q: "fp_aaa111" });
+    expect(isError).toBe(false);
+    expect(JSON.parse(text).map((e: { userId: string }) => e.userId)).toEqual(["alice", "carol"]);
+  });
+
+  it("searches user ids as well as fingerprints", async () => {
+    const { client, restore } = await connect(feed);
+    cleanup = restore;
+
+    const { text } = await call(client, "list_events", { q: "bob" });
+    expect(JSON.parse(text).map((e: { id: string }) => e.id)).toEqual(["evt-2"]);
+  });
+
+  it("returns the whole feed when q is omitted", async () => {
+    const { client, restore } = await connect(feed);
+    cleanup = restore;
+
+    const { text } = await call(client, "list_events", {});
+    expect(JSON.parse(text)).toHaveLength(3);
   });
 });
 

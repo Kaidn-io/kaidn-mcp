@@ -209,7 +209,7 @@ Two things govern every tool: whether it **spends quota**, and whether it
 | Tool | Cost | What it does |
 |---|---|---|
 | `get_stats` | free | Verdict, score and reason rollups over a rolling window. Start here. |
-| `list_events` | free | Scored events, newest first, filterable by verdict or type |
+| `list_events` | free | Scored events, newest first, filterable by verdict or type, searchable by fingerprint or user id |
 | `explain_event` | free | Every check that fired on one event, with the raw evidence |
 | `triage_queue` | free | Everything on `review`, highest score first |
 | `get_config` | free | Effective weights and thresholds for this tenant |
